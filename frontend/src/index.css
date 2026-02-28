@@ -444,6 +444,7 @@ a:hover { color: var(--accent-secondary); }
 }
 
 /* ── Forms ── */
+/* ── Forms ── */
 .form-group {
   margin-bottom: 1.25rem;
 }
@@ -466,6 +467,9 @@ a:hover { color: var(--accent-secondary); }
   font-family: var(--font-family);
   font-size: var(--font-base);
   transition: all var(--transition-fast);
+
+  /* 🔥 critical fixes */
+  -webkit-text-fill-color: var(--text-primary);
 }
 
 .form-control:focus {
@@ -483,12 +487,38 @@ textarea.form-control {
   resize: vertical;
 }
 
+/* ✅ SELECT FIX (major) */
 select.form-control {
   appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  background-color: var(--bg-glass); /* 👈 important */
+  color: var(--text-primary);
+
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 36px;
+}
+
+/* ✅ DROPDOWN MENU FIX (VERY IMPORTANT) */
+select.form-control option {
+  background-color: #111827; /* dark dropdown */
+  color: #f1f5f9;
+}
+
+/* ✅ For better contrast on hover (supported browsers) */
+select.form-control option:checked,
+select.form-control option:hover {
+  background-color: #1f2937;
+  color: #ffffff;
+}
+
+/* ✅ Fix for some Chromium browsers */
+select.form-control:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ── Tables ── */
