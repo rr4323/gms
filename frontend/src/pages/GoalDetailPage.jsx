@@ -170,10 +170,10 @@ export default function GoalDetailPage() {
                     {(user?.user_type === 'admin' || (goal.is_editable && (isOwner || goal.created_by === user?.id))) && (
                         <Link to={`/goals/${id}/edit`} className="btn btn-secondary btn-sm">Edit</Link>
                     )}
-                    {goal.status === 'draft' && isOwner && (
+                    {goal.status === 'draft' && (isOwner || user?.user_type === 'admin' || goal.created_by === user?.id) && (
                         <button className="btn btn-primary btn-sm" onClick={() => handleAction('submit')}>Submit for Approval</button>
                     )}
-                    {goal.status === 'rejected' && isOwner && (
+                    {goal.status === 'rejected' && (isOwner || user?.user_type === 'admin' || goal.created_by === user?.id) && (
                         <button className="btn btn-primary btn-sm" onClick={() => handleAction('submit')}>Re-submit</button>
                     )}
                     {goal.status === 'pending' && isEvaluator && (

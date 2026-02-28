@@ -198,7 +198,7 @@ class GoalListSerializer(serializers.ModelSerializer):
             'assigned_to', 'assigned_to_name',
             'evaluator', 'evaluator_name', 'due_date',
             'is_at_risk', 'is_finalized', 'final_rating',
-            'task_count', 'labels', 'created_at', 'updated_at',
+            'task_count', 'labels', 'created_at', 'updated_at'
         ]
 
     def get_assigned_to_name(self, obj):
@@ -235,7 +235,7 @@ class GoalDetailSerializer(serializers.ModelSerializer):
             'assigned_to', 'assigned_to_name',
             'evaluator', 'evaluator_name',
             'created_by', 'created_by_name',
-            'parent', 'due_date',
+            'parent', 'due_date','status',
             'final_score', 'final_rating', 'is_finalized',
             'is_at_risk', 'is_editable',
             'tasks', 'comments', 'feedbacks', 'evaluations',

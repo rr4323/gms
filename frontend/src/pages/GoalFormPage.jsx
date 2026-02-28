@@ -25,6 +25,7 @@ export default function GoalFormPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [initialLoading, setInitialLoading] = useState(true);
+    const [submitAfterSave, setSubmitAfterSave] = useState(false);
 
     const [form, setForm] = useState({
         name: '',
@@ -130,13 +131,24 @@ export default function GoalFormPage() {
         };
 
         try {
+            let goalId = id;
             if (isEdit) {
                 await api.put(`/goals/${id}/`, payload);
-                navigate(`/goals/${id}`);
             } else {
                 const res = await api.post('/goals/', payload);
-                navigate(`/goals/${res.data.id}`);
+                goalId = res.data.id;
             }
+
+            // If user clicked "Save & Submit", also submit for approval
+            if (submitAfterSave) {
+                try {
+                    await api.post(`/goals/${goalId}/submit/`);
+                } catch (submitErr) {
+                    console.error('Submit failed', submitErr);
+                }
+            }
+
+            navigate(`/goals/${goalId}`);
         } catch (err) {
             const data = err.response?.data;
             if (typeof data === 'object') {
@@ -364,17 +376,26 @@ export default function GoalFormPage() {
                         />
                     </div>
 
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}>
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '1rem', flexWrap: 'wrap' }}>
                         <button
                             type="submit"
                             className="btn btn-primary"
                             disabled={loading}
+                            onClick={() => setSubmitAfterSave(false)}
                         >
                             {loading
                                 ? 'Saving...'
                                 : isEdit
                                     ? 'Update Goal'
                                     : 'Create Goal'}
+                        </button>
+                        <button
+                            type="submit"
+                            className="btn btn-success"
+                            disabled={loading}
+                            onClick={() => setSubmitAfterSave(true)}
+                        >
+                            {loading ? 'Saving...' : 'Save & Submit for Approval'}
                         </button>
                         <Link to="/goals" className="btn btn-secondary">
                             Cancel
