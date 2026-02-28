@@ -18,9 +18,10 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # Custom nginx config handled via template to support env vars like API_URL
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
-# Default fallback (works for docker-compose, override this in Railway!)
+# Default fallbacks (works for docker-compose, override via Railway variables!)
 ENV API_URL="http://backend:8000"
+ENV PORT=80
 
-EXPOSE 80
+EXPOSE ${PORT}
 
 CMD ["nginx", "-g", "daemon off;"]
