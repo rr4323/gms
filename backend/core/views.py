@@ -427,25 +427,11 @@ class DashboardView(views.APIView):
         )
 
         # At-risk goals — use DB-side calculation to avoid N+1
-        today = timezone.now().date()
-        at_risk_qs = goals.filter(
-            status__in=['active', 'pending'],
-        ).annotate(
-            total_days=ExpressionWrapper(
-                F('due_date') - Cast(F('created_at'), output_field=models.DateField()),
-                output_field=IntegerField(),
-            ),
-            elapsed_days=ExpressionWrapper(
-                Cast(today, output_field=models.DateField()) - Cast(F('created_at'), output_field=models.DateField()),
-                output_field=IntegerField(),
-            ),
-        ).filter(
-            Q(total_days__lte=0) | Q(
-                elapsed_days__gte=F('total_days') * 0.7,
-                target_completion__lt=50,
-            )
-        )
-        at_risk = list(at_risk_qs.values_list('id', flat=True))
+        # Determine at-risk goals using Python logic (database agnostic)
+        at_risk = []
+        for goal in goals.filter(status__in=['active', 'pending']):
+            if goal.is_at_risk:
+                at_risk.append(goal.id)
 
         # Performance: avg final_score of scored goals
         scored = goals.filter(is_finalized=True)
