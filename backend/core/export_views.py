@@ -19,7 +19,7 @@ class ExportReportView(APIView):
 
     def get(self, request):
         report_type = request.query_params.get('type', 'individual')
-        file_format = request.query_params.get('format', 'pdf')
+        file_format = request.query_params.get('file_format', 'pdf')
         user_id = request.query_params.get('user_id')
 
         # Get report data based on type

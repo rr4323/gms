@@ -44,6 +44,9 @@ class IsGoalOwnerOrEvaluatorOrAdmin(BasePermission):
         # Owner
         if goal.assigned_to == user:
             return True
+        # Explicit evaluator on the goal
+        if goal.evaluator == user:
+            return True
         # Evaluator of the owner
         if goal.assigned_to.evaluator == user:
             return True
@@ -60,7 +63,11 @@ class CanApproveGoal(BasePermission):
         user = request.user
         if user.user_type == 'admin':
             return True
-        if obj.assigned_to.evaluator == user:
+        # Explicit evaluator on the goal
+        if obj.evaluator == user:
+            return True
+        # Fallback to owner's evaluator if goal-level evaluator is not set
+        if not obj.evaluator and obj.assigned_to.evaluator == user:
             return True
         if obj.team and obj.team.lead == user:
             return True

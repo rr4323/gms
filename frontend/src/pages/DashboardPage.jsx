@@ -146,6 +146,7 @@ export default function DashboardPage() {
                                     <th>Goal</th>
                                     <th>Status</th>
                                     <th>Assigned To</th>
+                                    <th>Approver</th>
                                     <th>Due Date</th>
                                     <th>Completion</th>
                                     <th>Last Updated</th>
@@ -160,6 +161,7 @@ export default function DashboardPage() {
                                         </td>
                                         <td><span className={`status-pill ${g.status}`}><span className="status-dot" />{g.status}</span></td>
                                         <td style={{ fontSize: 'var(--font-sm)' }}>{g.assigned_to_name}</td>
+                                        <td style={{ fontSize: 'var(--font-sm)' }}>{g.evaluator_name || '—'}</td>
                                         <td style={{ fontSize: 'var(--font-sm)' }}>{fmtDate(g.due_date)}</td>
                                         <td>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

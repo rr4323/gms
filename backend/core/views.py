@@ -148,14 +148,16 @@ class GoalViewSet(viewsets.ModelViewSet):
 
         if user.user_type == 'admin':
             return qs
-        elif user.user_type == 'manager':
-            # Show their own + their direct reports' goals
+
+        # Base filters: Assigned to user, Created by user, or Evaluator for the goal
+        filters = Q(assigned_to=user) | Q(created_by=user) | Q(evaluator=user)
+
+        if user.user_type == 'manager':
+            # Also show goals of direct reports
             report_ids = User.objects.filter(evaluator=user).values_list('id', flat=True)
-            return qs.filter(
-                Q(assigned_to=user) | Q(assigned_to__in=report_ids)
-            )
-        else:
-            return qs.filter(assigned_to=user)
+            filters |= Q(assigned_to__in=report_ids)
+
+        return qs.filter(filters).distinct()
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -166,6 +168,24 @@ class GoalViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        goal = self.get_object()
+        if not goal.is_editable and request.user.user_type != 'admin':
+            return Response(
+                {'error': 'Goal can only be edited in Draft or Rejected state.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        goal = self.get_object()
+        if not goal.is_editable and request.user.user_type != 'admin':
+            return Response(
+                {'error': 'Goal can only be edited in Draft or Rejected state.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().partial_update(request, *args, **kwargs)
 
     # ── Status transition actions ─────────────────────
     @action(detail=True, methods=['post'])

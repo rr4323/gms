@@ -34,6 +34,7 @@ export default function GoalFormPage() {
         goal_period: '',
         team: '',
         assigned_to: '',
+        evaluator: '',
         due_date: '',
         weightage: 100,
         labels: '',
@@ -68,16 +69,17 @@ export default function GoalFormPage() {
                     const g = res.data;
 
                     setForm({
-                        name: g.name || '',
+                        name: g.name,
                         description: g.description || '',
-                        entity: g.entity || '',
+                        entity: g.entity,
                         priority: g.priority || '',
                         goal_period: g.goal_period || '',
                         team: g.team || '',
-                        assigned_to: g.assigned_to || '',
-                        due_date: g.due_date || '',
-                        weightage: g.weightage ?? 100,
-                        labels: (g.labels || []).join(', '),
+                        assigned_to: g.assigned_to,
+                        evaluator: g.evaluator || '',
+                        due_date: g.due_date,
+                        weightage: g.weightage,
+                        labels: Array.isArray(g.labels) ? g.labels.join(', ') : '',
                     });
                 } else {
                     setForm((f) => ({
@@ -120,6 +122,7 @@ export default function GoalFormPage() {
             goal_period: form.goal_period ? parseInt(form.goal_period) : null,
             team: form.team ? parseInt(form.team) : null,
             assigned_to: parseInt(form.assigned_to),
+            evaluator: form.evaluator ? parseInt(form.evaluator) : null,
             weightage: parseInt(form.weightage),
             labels: form.labels
                 ? form.labels.split(',').map((l) => l.trim()).filter(Boolean)
@@ -327,17 +330,38 @@ export default function GoalFormPage() {
                                 onChange={handleChange}
                             />
                         </div>
+                    </div>
 
-                        <div className="form-group">
-                            <label>Labels (comma-separated)</label>
-                            <input
-                                className="form-control"
-                                name="labels"
-                                value={form.labels}
-                                onChange={handleChange}
-                                placeholder="Growth, Delivery, Process"
-                            />
-                        </div>
+                    <div className="form-group">
+                        <label>Approver / Evaluator *</label>
+                        <select
+                            className="form-control"
+                            name="evaluator"
+                            value={form.evaluator}
+                            onChange={handleChange}
+                            required
+                        >
+                            <option value="">Select Approver</option>
+                            {users.filter(u => u.user_type === 'manager' || u.user_type === 'admin').map(u => (
+                                <option key={u.id} value={u.id}>
+                                    {u.first_name} {u.last_name} ({u.user_type})
+                                </option>
+                            ))}
+                        </select>
+                        <p style={{ fontSize: 'var(--font-xs)', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            The person who will approve and score this goal.
+                        </p>
+                    </div>
+
+                    <div className="form-group">
+                        <label>Labels (comma separated)</label>
+                        <input
+                            className="form-control"
+                            name="labels"
+                            value={form.labels}
+                            onChange={handleChange}
+                            placeholder="Growth, Delivery, Process"
+                        />
                     </div>
 
                     <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}>
@@ -349,8 +373,8 @@ export default function GoalFormPage() {
                             {loading
                                 ? 'Saving...'
                                 : isEdit
-                                ? 'Update Goal'
-                                : 'Create Goal'}
+                                    ? 'Update Goal'
+                                    : 'Create Goal'}
                         </button>
                         <Link to="/goals" className="btn btn-secondary">
                             Cancel

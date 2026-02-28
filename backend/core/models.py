@@ -220,6 +220,10 @@ class Goal(models.Model):
         Team, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='goals',
     )
+    evaluator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='evaluated_goals',
+    )
 
     # Dates
     due_date = models.DateField()

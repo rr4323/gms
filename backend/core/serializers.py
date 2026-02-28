@@ -184,6 +184,7 @@ class EvaluationCreateSerializer(serializers.Serializer):
 class GoalListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views."""
     assigned_to_name = serializers.SerializerMethodField()
+    evaluator_name = serializers.SerializerMethodField()
     entity_name = serializers.CharField(source='entity.get_name_display', read_only=True)
     priority_name = serializers.CharField(source='priority.get_name_display', read_only=True, default=None)
     is_at_risk = serializers.BooleanField(read_only=True)
@@ -194,13 +195,17 @@ class GoalListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'status', 'entity', 'entity_name',
             'priority', 'priority_name', 'target_completion', 'weightage',
-            'assigned_to', 'assigned_to_name', 'due_date',
+            'assigned_to', 'assigned_to_name',
+            'evaluator', 'evaluator_name', 'due_date',
             'is_at_risk', 'is_finalized', 'final_rating',
             'task_count', 'labels', 'created_at', 'updated_at',
         ]
 
     def get_assigned_to_name(self, obj):
         return obj.assigned_to.get_full_name() or obj.assigned_to.username
+
+    def get_evaluator_name(self, obj):
+        return (obj.evaluator.get_full_name() or obj.evaluator.username) if obj.evaluator else None
 
     def get_task_count(self, obj):
         return obj.tasks.count()
@@ -209,6 +214,7 @@ class GoalListSerializer(serializers.ModelSerializer):
 class GoalDetailSerializer(serializers.ModelSerializer):
     """Full serializer with nested relationships."""
     assigned_to_name = serializers.SerializerMethodField()
+    evaluator_name = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     entity_name = serializers.CharField(source='entity.get_name_display', read_only=True)
     priority_name = serializers.CharField(source='priority.get_name_display', read_only=True, default=None)
@@ -226,8 +232,8 @@ class GoalDetailSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'labels',
             'entity', 'entity_name', 'priority', 'priority_name',
             'goal_period', 'goal_period_name', 'team', 'team_name',
-            'status', 'target_completion', 'weightage',
             'assigned_to', 'assigned_to_name',
+            'evaluator', 'evaluator_name',
             'created_by', 'created_by_name',
             'parent', 'due_date',
             'final_score', 'final_rating', 'is_finalized',
@@ -239,6 +245,9 @@ class GoalDetailSerializer(serializers.ModelSerializer):
     def get_assigned_to_name(self, obj):
         return obj.assigned_to.get_full_name() or obj.assigned_to.username
 
+    def get_evaluator_name(self, obj):
+        return (obj.evaluator.get_full_name() or obj.evaluator.username) if obj.evaluator else None
+
     def get_created_by_name(self, obj):
         return obj.created_by.get_full_name() or obj.created_by.username
 
@@ -249,7 +258,7 @@ class GoalCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'description', 'labels',
             'entity', 'priority', 'goal_period', 'team',
-            'weightage', 'assigned_to', 'parent', 'due_date',
+            'weightage', 'assigned_to', 'evaluator', 'parent', 'due_date',
         ]
         read_only_fields = ['id']
 

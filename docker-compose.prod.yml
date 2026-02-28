@@ -1,0 +1,48 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gms_prod_db}
+      POSTGRES_USER: ${POSTGRES_USER:-gms_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_db_password}
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gms_user} -d ${POSTGRES_DB:-gms_prod_db}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: always
+    command: >
+      sh -c "python manage.py migrate &&
+             gunicorn --bind 0.0.0.0:8000 --workers 3 gms.wsgi:application"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-gms_user}:${POSTGRES_PASSWORD:-secure_db_password}@db:5432/${POSTGRES_DB:-gms_prod_db}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-generate-a-very-long-and-random-secret-key}
+      DEBUG: "false"
+      ALLOWED_HOSTS: "*"
+      # In real production, set ALLOWED_HOSTS to your actual domain name e.g. ALLOWED_HOSTS: "example.com"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata_prod:

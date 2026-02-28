@@ -14,6 +14,7 @@ export default function GoalDetailPage() {
     const [rejectComment, setRejectComment] = useState('');
     const [showRejectModal, setShowRejectModal] = useState(false);
     const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+    const [feedbackType, setFeedbackType] = useState('member');
     const [showEvalModal, setShowEvalModal] = useState(false);
     const [progress, setProgress] = useState(0);
     const [dimensions, setDimensions] = useState([]);
@@ -33,8 +34,8 @@ export default function GoalDetailPage() {
 
     useEffect(() => {
         fetchGoal();
-        api.get('/dimensions/').then(res => setDimensions(res.data));
-        api.get('/ratings/').then(res => setRatings(res.data));
+        api.get('/dimensions/').then(res => setDimensions(res.data.results || res.data));
+        api.get('/ratings/').then(res => setRatings(res.data.results || res.data));
     }, [id]);
 
     const handleAction = async (action, data = {}) => {
@@ -135,7 +136,7 @@ export default function GoalDetailPage() {
     if (!goal) return null;
 
     const isOwner = goal.assigned_to === user?.id;
-    const isEvaluator = user?.user_type === 'manager' || user?.user_type === 'admin';
+    const isEvaluator = user?.user_type === 'admin' || goal.evaluator === user?.id;
     // PRD §4: Progress update allowed for owner, evaluator of their team, or admin
     const canUpdateProgress = goal.status === 'active' && (isOwner || isEvaluator);
     // PRD §2 Step 5: Both member and evaluator can mark complete
@@ -166,7 +167,7 @@ export default function GoalDetailPage() {
                     )}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {goal.is_editable && isOwner && (
+                    {(user?.user_type === 'admin' || (goal.is_editable && (isOwner || goal.created_by === user?.id))) && (
                         <Link to={`/goals/${id}/edit`} className="btn btn-secondary btn-sm">Edit</Link>
                     )}
                     {goal.status === 'draft' && isOwner && (
@@ -185,10 +186,10 @@ export default function GoalDetailPage() {
                         <button className="btn btn-success btn-sm" onClick={() => handleAction('complete')}>Mark Complete</button>
                     )}
                     {goal.status === 'completed' && !memberFb && isOwner && (
-                        <button className="btn btn-primary btn-sm" onClick={() => setShowFeedbackModal(true)}>Submit Self-Reflection</button>
+                        <button className="btn btn-primary btn-sm" onClick={() => { setFeedbackType('member'); setShowFeedbackModal(true); }}>Submit Self-Reflection</button>
                     )}
                     {goal.status === 'completed' && !evaluatorFb && isEvaluator && (
-                        <button className="btn btn-primary btn-sm" onClick={() => { setShowFeedbackModal(true); }}>Submit Evaluator Feedback</button>
+                        <button className="btn btn-primary btn-sm" onClick={() => { setFeedbackType('evaluator'); setShowFeedbackModal(true); }}>Submit Evaluator Feedback</button>
                     )}
                     {goal.status === 'completed' && memberFb && evaluatorFb && !goal.is_finalized && isEvaluator && (
                         <button className="btn btn-primary btn-sm" onClick={() => setShowEvalModal(true)}>Evaluate & Score</button>
@@ -345,6 +346,7 @@ export default function GoalDetailPage() {
                         <div className="info-row"><span className="info-label">Team</span><span>{goal.team_name || '—'}</span></div>
                         <div className="info-row"><span className="info-label">Assigned To</span><span>{goal.assigned_to_name}</span></div>
                         <div className="info-row"><span className="info-label">Created By</span><span>{goal.created_by_name}</span></div>
+                        <div className="info-row"><span className="info-label">Approver</span><span>{goal.evaluator_name || '—'}</span></div>
                         <div className="info-row"><span className="info-label">Due Date</span><span>{formatDate(goal.due_date)}</span></div>
                         <div className="info-row"><span className="info-label">Weightage</span><span>{goal.weightage}%</span></div>
                         <div className="info-row"><span className="info-label">Completion</span><span>{goal.target_completion}%</span></div>
@@ -398,12 +400,12 @@ export default function GoalDetailPage() {
                 <div className="modal-overlay" onClick={() => setShowFeedbackModal(false)}>
                     <div className="modal" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h2>{isOwner ? 'Self-Reflection' : 'Evaluator Feedback'}</h2>
+                            <h2>{feedbackType === 'member' ? 'Self-Reflection' : 'Evaluator Feedback'}</h2>
                             <button className="btn btn-icon btn-secondary" onClick={() => setShowFeedbackModal(false)}>✕</button>
                         </div>
                         <div className="modal-body">
                             <p style={{ fontSize: 'var(--font-sm)', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                                {isOwner
+                                {feedbackType === 'member'
                                     ? 'What did you deliver? What would you do differently?'
                                     : 'Provide your assessment of the goal completion.'}
                             </p>
@@ -414,7 +416,7 @@ export default function GoalDetailPage() {
                         </div>
                         <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={() => setShowFeedbackModal(false)}>Cancel</button>
-                            <button className="btn btn-primary" onClick={() => handleFeedback(isOwner ? 'member' : 'evaluator')}>
+                            <button className="btn btn-primary" onClick={() => handleFeedback(feedbackType)}>
                                 Submit Feedback
                             </button>
                         </div>

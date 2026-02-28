@@ -27,7 +27,7 @@ export default function ReportsPage() {
     useEffect(() => { fetchReport(); }, [reportType, userId]);
 
     const handleExport = async (format) => {
-        const params = new URLSearchParams({ type: reportType, format });
+        const params = new URLSearchParams({ type: reportType, file_format: format });
         if (reportType === 'individual') params.set('user_id', userId || user?.id);
         try {
             const res = await api.get(`/reports/export/?${params.toString()}`, { responseType: 'blob' });
