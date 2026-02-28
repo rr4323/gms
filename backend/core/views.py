@@ -47,6 +47,33 @@ class LoginView(views.APIView):
         })
 
 
+class LogoutView(views.APIView):
+    """Delete token to log out."""
+
+    def post(self, request):
+        if hasattr(request.user, 'auth_token'):
+            request.user.auth_token.delete()
+        return Response({'detail': 'Logged out.'}, status=status.HTTP_200_OK)
+
+
+class PasswordChangeView(views.APIView):
+    """Change password for current user."""
+
+    def post(self, request):
+        old_password = request.data.get('old_password', '')
+        new_password = request.data.get('new_password', '')
+        if not request.user.check_password(old_password):
+            return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_password) < 6:
+            return Response({'error': 'New password must be at least 6 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+        request.user.set_password(new_password)
+        request.user.save()
+        # Re-create token
+        Token.objects.filter(user=request.user).delete()
+        token = Token.objects.create(user=request.user)
+        return Response({'detail': 'Password changed.', 'token': token.key})
+
+
 class MeView(views.APIView):
     def get(self, request):
         return Response(UserSerializer(request.user).data)
@@ -109,8 +136,9 @@ class RatingListView(generics.ListAPIView):
 # ── Goals ─────────────────────────────────────────────
 class GoalViewSet(viewsets.ModelViewSet):
     filterset_fields = ['status', 'entity', 'priority', 'assigned_to', 'team']
-    search_fields = ['name', 'description']
+    search_fields = ['name', 'description', 'labels']
     ordering_fields = ['created_at', 'due_date', 'target_completion', 'status']
+    ordering = ['-created_at']
 
     def get_queryset(self):
         user = self.request.user

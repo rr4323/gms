@@ -32,7 +32,10 @@ export function AuthProvider({ children }) {
         return res.data.user;
     };
 
-    const logout = () => {
+    const logout = async () => {
+        try {
+            await api.post('/auth/logout/');
+        } catch { /* ignore */ }
         localStorage.removeItem('gms_token');
         localStorage.removeItem('gms_user');
         setUser(null);

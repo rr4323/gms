@@ -16,7 +16,9 @@ router.register(r'tasks', views.TaskViewSet, basename='task')
 urlpatterns = [
     # Auth
     path('auth/login/', views.LoginView.as_view(), name='login'),
+    path('auth/logout/', views.LogoutView.as_view(), name='logout'),
     path('auth/me/', views.MeView.as_view(), name='me'),
+    path('auth/password-change/', views.PasswordChangeView.as_view(), name='password-change'),
 
     # Lookups
     path('entities/', views.EntityListView.as_view(), name='entity-list'),

@@ -20,6 +20,9 @@ export default function GoalDetailPage() {
     const [ratings, setRatings] = useState([]);
     const [evalData, setEvalData] = useState({});
     const [finalRating, setFinalRating] = useState('');
+    // Sub-task CRUD state
+    const [newTaskName, setNewTaskName] = useState('');
+    const [addingTask, setAddingTask] = useState(false);
 
     const fetchGoal = () => {
         api.get(`/goals/${id}/`).then(res => {
@@ -93,11 +96,50 @@ export default function GoalDetailPage() {
         }
     };
 
+    // Sub-task handlers
+    const handleAddTask = async (e) => {
+        e.preventDefault();
+        if (!newTaskName.trim()) return;
+        setAddingTask(true);
+        try {
+            await api.post('/tasks/', { goal: parseInt(id), name: newTaskName.trim(), status: 'todo' });
+            setNewTaskName('');
+            fetchGoal();
+        } catch (err) {
+            alert('Failed to add sub-task');
+        } finally {
+            setAddingTask(false);
+        }
+    };
+
+    const handleUpdateTaskStatus = async (taskId, newStatus) => {
+        try {
+            await api.patch(`/tasks/${taskId}/`, { status: newStatus });
+            fetchGoal();
+        } catch (err) {
+            alert('Failed to update task');
+        }
+    };
+
+    const handleDeleteTask = async (taskId) => {
+        if (!confirm('Delete this sub-task?')) return;
+        try {
+            await api.delete(`/tasks/${taskId}/`);
+            fetchGoal();
+        } catch (err) {
+            alert('Failed to delete task');
+        }
+    };
+
     if (loading) return <div className="loading-page"><div className="spinner" /></div>;
     if (!goal) return null;
 
     const isOwner = goal.assigned_to === user?.id;
     const isEvaluator = user?.user_type === 'manager' || user?.user_type === 'admin';
+    // PRD §4: Progress update allowed for owner, evaluator of their team, or admin
+    const canUpdateProgress = goal.status === 'active' && (isOwner || isEvaluator);
+    // PRD §2 Step 5: Both member and evaluator can mark complete
+    const canComplete = goal.status === 'active' && (isOwner || isEvaluator);
     const memberFb = goal.feedbacks?.find(f => f.feedback_type === 'member');
     const evaluatorFb = goal.feedbacks?.find(f => f.feedback_type === 'evaluator');
     const formatDate = (d) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -139,7 +181,7 @@ export default function GoalDetailPage() {
                             <button className="btn btn-danger btn-sm" onClick={() => setShowRejectModal(true)}>Reject</button>
                         </>
                     )}
-                    {goal.status === 'active' && isOwner && (
+                    {canComplete && (
                         <button className="btn btn-success btn-sm" onClick={() => handleAction('complete')}>Mark Complete</button>
                     )}
                     {goal.status === 'completed' && !memberFb && isOwner && (
@@ -165,8 +207,8 @@ export default function GoalDetailPage() {
                         </p>
                     </div>
 
-                    {/* Progress */}
-                    {goal.status === 'active' && isOwner && (
+                    {/* Progress — PRD §4: Owner, Evaluator (team), Admin can update */}
+                    {canUpdateProgress && (
                         <div className="card" style={{ marginBottom: '1.5rem' }}>
                             <div className="card-header"><h3>Update Progress</h3></div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -182,20 +224,43 @@ export default function GoalDetailPage() {
                         </div>
                     )}
 
-                    {/* Sub-tasks */}
-                    {goal.tasks && goal.tasks.length > 0 && (
-                        <div className="card" style={{ marginBottom: '1.5rem' }}>
-                            <div className="card-header"><h3>Sub-tasks</h3></div>
-                            {goal.tasks.map(t => (
+                    {/* Sub-tasks — PRD §3: CRUD for sub-items */}
+                    <div className="card" style={{ marginBottom: '1.5rem' }}>
+                        <div className="card-header"><h3>Sub-tasks</h3></div>
+                        {goal.tasks && goal.tasks.length > 0 ? (
+                            goal.tasks.map(t => (
                                 <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                                    <span className={`status-pill ${t.status === 'done' ? 'completed' : t.status === 'in_progress' ? 'active' : 'draft'}`} style={{ fontSize: '0.65rem' }}>
-                                        {t.status.replace('_', ' ')}
-                                    </span>
-                                    <span style={{ fontSize: 'var(--font-sm)' }}>{t.name}</span>
+                                    <select
+                                        className="form-control"
+                                        value={t.status}
+                                        onChange={(e) => handleUpdateTaskStatus(t.id, e.target.value)}
+                                        style={{ width: '120px', fontSize: 'var(--font-xs)', padding: '4px 8px' }}
+                                    >
+                                        <option value="todo">To Do</option>
+                                        <option value="in_progress">In Progress</option>
+                                        <option value="done">Done</option>
+                                    </select>
+                                    <span style={{ flex: 1, fontSize: 'var(--font-sm)', textDecoration: t.status === 'done' ? 'line-through' : 'none', opacity: t.status === 'done' ? 0.6 : 1 }}>{t.name}</span>
+                                    <button className="btn btn-danger btn-sm" style={{ padding: '2px 8px' }} onClick={() => handleDeleteTask(t.id)}>✕</button>
                                 </div>
-                            ))}
-                        </div>
-                    )}
+                            ))
+                        ) : (
+                            <p style={{ fontSize: 'var(--font-sm)', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>No sub-tasks yet</p>
+                        )}
+                        {(goal.status === 'active' || goal.status === 'draft') && (
+                            <form onSubmit={handleAddTask} style={{ display: 'flex', gap: '8px', marginTop: '0.75rem' }}>
+                                <input
+                                    className="form-control"
+                                    placeholder="Add a sub-task..."
+                                    value={newTaskName}
+                                    onChange={(e) => setNewTaskName(e.target.value)}
+                                />
+                                <button type="submit" className="btn btn-primary btn-sm" disabled={addingTask}>
+                                    {addingTask ? '...' : 'Add'}
+                                </button>
+                            </form>
+                        )}
+                    </div>
 
                     {/* Feedback */}
                     {(memberFb || evaluatorFb) && (
