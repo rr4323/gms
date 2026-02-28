@@ -20,5 +20,5 @@ RUN SECRET_KEY="dummy_key_for_build" python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
-# Start Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "gms.wsgi:application"]
+# Start Gunicorn after running migrations
+CMD sh -c "python manage.py migrate && gunicorn --bind 0.0.0.0:8000 --workers 3 gms.wsgi:application"
