@@ -1,16 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 
 export default function ApprovalsPage() {
     const [goals, setGoals] = useState([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
+    const { user } = useAuth();
 
     const fetchPending = () => {
         setLoading(true);
         api.get('/goals/', { params: { status: 'pending' } }).then(res => {
-            setGoals(res.data.results || res.data);
+            const allPending = res.data.results || res.data;
+            // Bug 6: Only show goals where current user is the assigned evaluator
+            const filtered = user?.user_type === 'admin'
+                ? allPending
+                : allPending.filter(g => g.evaluator === user?.id);
+            setGoals(filtered);
         }).catch(console.error).finally(() => setLoading(false));
     };
 

@@ -57,18 +57,16 @@ class IsGoalOwnerOrEvaluatorOrAdmin(BasePermission):
 
 
 class CanApproveGoal(BasePermission):
-    """Only evaluators of the goal owner, or admins, can approve/reject."""
+    """Only the assigned evaluator on the goal, or admins, can approve/reject."""
 
     def has_object_permission(self, request, view, obj):
         user = request.user
         if user.user_type == 'admin':
             return True
-        # Explicit evaluator on the goal
-        if obj.evaluator == user:
+        # Only the explicitly assigned evaluator on the goal can approve/reject
+        if obj.evaluator and obj.evaluator == user:
             return True
         # Fallback to owner's evaluator if goal-level evaluator is not set
         if not obj.evaluator and obj.assigned_to.evaluator == user:
-            return True
-        if obj.team and obj.team.lead == user:
             return True
         return False

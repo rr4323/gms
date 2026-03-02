@@ -136,7 +136,9 @@ export default function GoalDetailPage() {
     if (!goal) return null;
 
     const isOwner = goal.assigned_to === user?.id;
-    const isEvaluator = user?.user_type === 'admin' || goal.evaluator === user?.id;
+    const isAssignedEvaluator = goal.evaluator === user?.id;
+    const isAdminUser = user?.user_type === 'admin';
+    const isEvaluator = isAdminUser || isAssignedEvaluator;
     // PRD §4: Progress update allowed for owner, evaluator of their team, or admin
     const canUpdateProgress = goal.status === 'active' && (isOwner || isEvaluator);
     // PRD §2 Step 5: Both member and evaluator can mark complete

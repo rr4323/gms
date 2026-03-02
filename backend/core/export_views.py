@@ -51,14 +51,22 @@ class ExportReportView(APIView):
             return HttpResponse('Invalid report type', status=400)
 
         if file_format == 'pdf':
-            pdf_bytes = generate_report_pdf(report_data, report_type)
+            try:
+                pdf_bytes = generate_report_pdf(report_data, report_type)
+            except Exception as e:
+                return HttpResponse(f'PDF generation failed: {str(e)}', status=500)
             response = HttpResponse(pdf_bytes, content_type='application/pdf')
             response['Content-Disposition'] = f'attachment; filename="gms_{report_type}_report.pdf"'
+            response['Access-Control-Expose-Headers'] = 'Content-Disposition'
             return response
         elif file_format == 'csv':
-            csv_content = generate_report_csv(report_data, report_type)
+            try:
+                csv_content = generate_report_csv(report_data, report_type)
+            except Exception as e:
+                return HttpResponse(f'CSV generation failed: {str(e)}', status=500)
             response = HttpResponse(csv_content, content_type='text/csv')
             response['Content-Disposition'] = f'attachment; filename="gms_{report_type}_report.csv"'
+            response['Access-Control-Expose-Headers'] = 'Content-Disposition'
             return response
         else:
             return HttpResponse('Invalid format. Use pdf or csv.', status=400)

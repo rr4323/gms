@@ -144,18 +144,14 @@ class GoalViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = Goal.objects.select_related(
             'entity', 'priority', 'goal_period', 'assigned_to', 'created_by', 'team',
+            'evaluator',
         ).prefetch_related('tasks', 'comments', 'feedbacks', 'evaluations')
 
         if user.user_type == 'admin':
             return qs
 
-        # Base filters: Assigned to user, Created by user, or Evaluator for the goal
+        # Show goals assigned to user, created by user, or where user is the assigned evaluator
         filters = Q(assigned_to=user) | Q(created_by=user) | Q(evaluator=user)
-
-        if user.user_type == 'manager':
-            # Also show goals of direct reports
-            report_ids = User.objects.filter(evaluator=user).values_list('id', flat=True)
-            filters |= Q(assigned_to__in=report_ids)
 
         return qs.filter(filters).distinct()
 
@@ -334,6 +330,12 @@ class GoalViewSet(viewsets.ModelViewSet):
                 {'error': 'Only the goal owner can submit member feedback.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        if feedback_type == 'evaluator':
+            if request.user.user_type != 'admin' and goal.evaluator != request.user:
+                return Response(
+                    {'error': 'Only the assigned evaluator can submit evaluator feedback.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         serializer = GoalFeedbackSerializer(data={**request.data, 'goal': goal.id})
         serializer.is_valid(raise_exception=True)
@@ -352,6 +354,13 @@ class GoalViewSet(viewsets.ModelViewSet):
             return Response(
                 {'error': 'Evaluation can only be done on completed goals.'},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Only the assigned evaluator or admin can submit evaluations
+        if request.user.user_type != 'admin' and goal.evaluator != request.user:
+            return Response(
+                {'error': 'Only the assigned evaluator can score this goal.'},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         # Check both feedbacks exist
@@ -412,12 +421,12 @@ class DashboardView(views.APIView):
         user = request.user
         goals = Goal.objects.all()
 
-        # Filter by role
+        # Filter by role — proper isolation
         if user.user_type == 'member':
             goals = goals.filter(assigned_to=user)
         elif user.user_type == 'manager':
-            report_ids = User.objects.filter(evaluator=user).values_list('id', flat=True)
-            goals = goals.filter(Q(assigned_to=user) | Q(assigned_to__in=report_ids))
+            # Manager sees only their own goals + goals where they are the assigned evaluator
+            goals = goals.filter(Q(assigned_to=user) | Q(evaluator=user))
         # admin sees all
 
         total = goals.count()

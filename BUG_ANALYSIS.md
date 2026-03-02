@@ -4,3 +4,5 @@
 - first manager apporove or score each goal
 - Editing Rules: Goals can only be edited while in Draft or Rejected state; Active goals are locked
 - pdf/csv export is not working
+- goal approvla list nahi hone chahiye
+- dashboard -correction ,isolation

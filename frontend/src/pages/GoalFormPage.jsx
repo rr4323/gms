@@ -69,6 +69,13 @@ export default function GoalFormPage() {
 
                     const g = res.data;
 
+                    // Bug 4: Goals can only be edited in Draft or Rejected state
+                    if (!g.is_editable && user?.user_type !== 'admin') {
+                        alert('This goal can only be edited in Draft or Rejected state.');
+                        navigate(`/goals/${id}`);
+                        return;
+                    }
+
                     setForm({
                         name: g.name,
                         description: g.description || '',
