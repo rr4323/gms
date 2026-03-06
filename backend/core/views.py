@@ -5,7 +5,6 @@ from decimal import Decimal
 
 from django.db import models
 from django.db.models import Avg, Count, F, Q, ExpressionWrapper, FloatField, IntegerField
-from django.db.models.functions import Now, Cast, Extract
 from django.utils import timezone
 from rest_framework import generics, status, views, viewsets
 from rest_framework.authtoken.models import Token
@@ -64,8 +63,8 @@ class PasswordChangeView(views.APIView):
         new_password = request.data.get('new_password', '')
         if not request.user.check_password(old_password):
             return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_400_BAD_REQUEST)
-        if len(new_password) < 6:
-            return Response({'error': 'New password must be at least 6 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_password) < 8:
+            return Response({'error': 'New password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
         request.user.set_password(new_password)
         request.user.save()
         # Re-create token
@@ -410,7 +409,13 @@ class TaskViewSet(viewsets.ModelViewSet):
     filterset_fields = ['goal', 'status']
 
     def get_queryset(self):
-        return Task.objects.select_related('goal').all()
+        user = self.request.user
+        if user.user_type == 'admin':
+            return Task.objects.select_related('goal').all()
+        # Only show tasks for goals the user can see
+        return Task.objects.select_related('goal').filter(
+            Q(goal__assigned_to=user) | Q(goal__created_by=user) | Q(goal__evaluator=user)
+        ).distinct()
 
 
 # ── Dashboard ─────────────────────────────────────────
