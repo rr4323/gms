@@ -26,10 +26,14 @@ class ExportReportView(APIView):
         if report_type == 'individual':
             if not user_id:
                 user_id = request.user.id
+            try:
+                user_id = int(user_id)
+            except (ValueError, TypeError):
+                return HttpResponse('Invalid user_id', status=400)
             # Re-use the individual report logic
             view = IndividualReportView()
             view.request = request
-            response = view.get(request, int(user_id))
+            response = view.get(request, user_id)
             report_data = response.data
 
         elif report_type == 'team':
@@ -53,8 +57,8 @@ class ExportReportView(APIView):
         if file_format == 'pdf':
             try:
                 pdf_bytes = generate_report_pdf(report_data, report_type)
-            except Exception as e:
-                return HttpResponse(f'PDF generation failed: {str(e)}', status=500)
+            except Exception:
+                return HttpResponse('PDF generation failed. Please try again.', status=500)
             response = HttpResponse(pdf_bytes, content_type='application/pdf')
             response['Content-Disposition'] = f'attachment; filename="gms_{report_type}_report.pdf"'
             response['Access-Control-Expose-Headers'] = 'Content-Disposition'
@@ -62,8 +66,8 @@ class ExportReportView(APIView):
         elif file_format == 'csv':
             try:
                 csv_content = generate_report_csv(report_data, report_type)
-            except Exception as e:
-                return HttpResponse(f'CSV generation failed: {str(e)}', status=500)
+            except Exception:
+                return HttpResponse('CSV generation failed. Please try again.', status=500)
             response = HttpResponse(csv_content, content_type='text/csv')
             response['Content-Disposition'] = f'attachment; filename="gms_{report_type}_report.csv"'
             response['Access-Control-Expose-Headers'] = 'Content-Disposition'

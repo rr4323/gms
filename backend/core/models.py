@@ -24,6 +24,7 @@ class User(AbstractUser):
         'Team', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='members',
     )
+    email = models.EmailField(unique=True, null=True, blank=True)
     evaluator = models.ForeignKey(
         'self', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='direct_reports',

@@ -43,7 +43,8 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=6)
+    password = serializers.CharField(write_only=True, min_length=8)
+    email = serializers.EmailField(required=True)
 
     class Meta:
         model = User
@@ -51,6 +52,11 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'password', 'first_name', 'last_name',
             'user_type', 'team', 'evaluator',
         ]
+
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError('A user with this email already exists.')
+        return value
 
     def create(self, validated_data):
         password = validated_data.pop('password')

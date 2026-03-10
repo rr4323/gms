@@ -50,6 +50,8 @@ export default function GoalDetailPage() {
     const handleProgressUpdate = async () => {
         try {
             await api.patch(`/goals/${id}/progress/`, { target_completion: progress });
+            // NB-9: Immediately reflect in UI before refetch
+            setGoal(prev => prev ? { ...prev, target_completion: progress } : prev);
             fetchGoal();
         } catch (err) {
             alert(err.response?.data?.error || 'Failed to update progress');
@@ -190,7 +192,8 @@ export default function GoalDetailPage() {
                     {goal.status === 'completed' && !memberFb && isOwner && (
                         <button className="btn btn-primary btn-sm" onClick={() => { setFeedbackType('member'); setShowFeedbackModal(true); }}>Submit Self-Reflection</button>
                     )}
-                    {goal.status === 'completed' && !evaluatorFb && isEvaluator && (
+                    {/* NB-13: Evaluator feedback only shows after member self-reflection */}
+                    {goal.status === 'completed' && memberFb && !evaluatorFb && isEvaluator && (
                         <button className="btn btn-primary btn-sm" onClick={() => { setFeedbackType('evaluator'); setShowFeedbackModal(true); }}>Submit Evaluator Feedback</button>
                     )}
                     {goal.status === 'completed' && memberFb && evaluatorFb && !goal.is_finalized && isEvaluator && (
@@ -350,11 +353,11 @@ export default function GoalDetailPage() {
                         <div className="info-row"><span className="info-label">Created By</span><span>{goal.created_by_name}</span></div>
                         <div className="info-row"><span className="info-label">Approver</span><span>{goal.evaluator_name || '—'}</span></div>
                         <div className="info-row"><span className="info-label">Due Date</span><span>{formatDate(goal.due_date)}</span></div>
-                        <div className="info-row"><span className="info-label">Weightage</span><span>{goal.weightage}%</span></div>
-                        <div className="info-row"><span className="info-label">Completion</span><span>{goal.target_completion}%</span></div>
+                        <div className="info-row"><span className="info-label">Weightage</span><span>{goal.weightage != null ? `${goal.weightage}%` : '—'}</span></div>
+                        <div className="info-row"><span className="info-label">Completion</span><span style={{ fontWeight: 700 }}>{goal.target_completion != null ? `${goal.target_completion}%` : '0%'}</span></div>
                         <div style={{ marginTop: '1rem' }}>
                             <div className={`progress-bar ${goal.is_at_risk ? 'at-risk' : ''}`}>
-                                <div className="fill" style={{ width: `${goal.target_completion}%` }} />
+                                <div className="fill" style={{ width: `${goal.target_completion || 0}%` }} />
                             </div>
                         </div>
                         {goal.is_finalized && (

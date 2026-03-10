@@ -315,11 +315,13 @@ export default function GoalFormPage() {
                             >
                                 <option value="">Select user</option>
                                 {Array.isArray(users) &&
-                                    users.map((u) => (
-                                        <option key={u.id} value={u.id}>
-                                            {u.first_name} {u.last_name} ({u.username})
-                                        </option>
-                                    ))}
+                                    users
+                                        .filter((u) => user?.user_type === 'admin' || u.user_type !== 'admin')
+                                        .map((u) => (
+                                            <option key={u.id} value={u.id}>
+                                                {(u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username}
+                                            </option>
+                                        ))}
                             </select>
                         </div>
 
