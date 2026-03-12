@@ -463,13 +463,13 @@ a:hover { color: var(--accent-secondary); }
   background: var(--bg-glass);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  color: var(--text-primary);
+  color: #fff;
   font-family: var(--font-family);
   font-size: var(--font-base);
   transition: all var(--transition-fast);
 
   /* 🔥 critical fixes */
-  -webkit-text-fill-color: var(--text-primary);
+  /* -webkit-text-fill-color: var(--text-primary); */
 }
 
 .form-control:focus {
