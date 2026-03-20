@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'corsheaders',
     'django_filters',
+    'mozilla_django_oidc',
     # Local
     'core',
 ]
@@ -37,6 +38,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.TenantMiddleware',
 ]
 
 ROOT_URLCONF = 'gms.urls'
@@ -83,10 +85,25 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+# Keycloak / OIDC settings
+KEYCLOAK_URL = os.environ.get('KEYCLOAK_URL', 'http://keycloak:8080')
+KEYCLOAK_REALM = os.environ.get('KEYCLOAK_REALM', 'gms')
+KEYCLOAK_CLIENT_ID = os.environ.get('KEYCLOAK_CLIENT_ID', 'gms-backend')
+KEYCLOAK_CLIENT_SECRET = os.environ.get('KEYCLOAK_CLIENT_SECRET', '')
+
+OIDC_OP_AUTHORIZATION_ENDPOINT = f'{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/auth'
+OIDC_OP_TOKEN_ENDPOINT = f'{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token'
+OIDC_OP_USER_ENDPOINT = f'{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/userinfo'
+OIDC_OP_JWKS_ENDPOINT = f'{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs'
+OIDC_RP_CLIENT_ID = KEYCLOAK_CLIENT_ID
+OIDC_RP_CLIENT_SECRET = KEYCLOAK_CLIENT_SECRET
+OIDC_RP_SIGN_ALGO = 'RS256'
+
 # REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
+        'core.authentication.KeycloakJWTAuthentication',    # Primary — Keycloak JWT
+        'rest_framework.authentication.TokenAuthentication', # Fallback — migration period
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -120,5 +137,9 @@ USE_TZ = True
 # Static files
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Media files (for org logos etc.)
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

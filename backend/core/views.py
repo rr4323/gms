@@ -16,6 +16,8 @@ from .models import (
     User, Team, Entity, Priority, GoalPeriod, Goal,
     GoalComment, GoalFeedback, Task,
     EvaluatorDimension, EvaluationRating, Evaluation,
+    Organization, Milestone, ProgressSnapshot, GoalActivity,
+    JournalEntry, CalendarIntegration, CalendarEvent, TeamsIntegration,
 )
 from .permissions import (
     IsAdminUser, IsEvaluatorOrAdmin,
@@ -28,7 +30,11 @@ from .serializers import (
     GoalListSerializer, GoalDetailSerializer, GoalCreateUpdateSerializer,
     GoalProgressSerializer, GoalCommentSerializer, GoalFeedbackSerializer,
     EvaluationSerializer, EvaluationCreateSerializer, TaskSerializer,
+    OrganizationSerializer, MilestoneSerializer, ProgressSnapshotSerializer,
+    GoalActivitySerializer, JournalEntrySerializer,
+    CalendarIntegrationSerializer, CalendarEventSerializer, TeamsIntegrationSerializer,
 )
+from .mixins import TenantQuerySetMixin
 
 
 # ── Auth ──────────────────────────────────────────────
@@ -162,7 +168,12 @@ class GoalViewSet(viewsets.ModelViewSet):
         return GoalDetailSerializer
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        goal = serializer.save(created_by=self.request.user)
+        GoalActivity.objects.create(
+            goal=goal, user=self.request.user,
+            activity_type=GoalActivity.ActivityType.CREATED,
+            description=f'Goal "{goal.name}" created',
+        )
 
     def update(self, request, *args, **kwargs):
         goal = self.get_object()
@@ -192,8 +203,15 @@ class GoalViewSet(viewsets.ModelViewSet):
                 {'error': 'Only draft or rejected goals can be submitted.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        old_status = goal.status
         goal.status = Goal.Status.PENDING
         goal.save(update_fields=['status', 'updated_at'])
+        GoalActivity.objects.create(
+            goal=goal, user=request.user,
+            activity_type=GoalActivity.ActivityType.STATUS_CHANGE,
+            description='Goal submitted for approval',
+            old_value=old_status, new_value=goal.status,
+        )
         return Response(GoalDetailSerializer(goal).data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, CanApproveGoal])
@@ -205,8 +223,15 @@ class GoalViewSet(viewsets.ModelViewSet):
                 {'error': 'Only pending goals can be approved.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        old_status = goal.status
         goal.status = Goal.Status.ACTIVE
         goal.save(update_fields=['status', 'updated_at'])
+        GoalActivity.objects.create(
+            goal=goal, user=request.user,
+            activity_type=GoalActivity.ActivityType.STATUS_CHANGE,
+            description='Goal approved',
+            old_value=old_status, new_value=goal.status,
+        )
         # Optionally add a comment
         comment_text = request.data.get('comment', '')
         if comment_text:
@@ -228,9 +253,16 @@ class GoalViewSet(viewsets.ModelViewSet):
                 {'error': 'A comment is mandatory when rejecting a goal.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        old_status = goal.status
         goal.status = Goal.Status.REJECTED
         goal.save(update_fields=['status', 'updated_at'])
         GoalComment.objects.create(goal=goal, user=request.user, comment=comment_text)
+        GoalActivity.objects.create(
+            goal=goal, user=request.user,
+            activity_type=GoalActivity.ActivityType.STATUS_CHANGE,
+            description=f'Goal rejected: {comment_text[:100]}',
+            old_value=old_status, new_value=goal.status,
+        )
         return Response(GoalDetailSerializer(goal).data)
 
     @action(detail=True, methods=['patch'])
@@ -261,8 +293,20 @@ class GoalViewSet(viewsets.ModelViewSet):
             )
         serializer = GoalProgressSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        old_pct = goal.target_completion
         goal.target_completion = serializer.validated_data['target_completion']
         goal.save(update_fields=['target_completion', 'updated_at'])
+        # Create progress snapshot for historical charting
+        ProgressSnapshot.objects.create(
+            goal=goal, completion_percentage=goal.target_completion,
+            recorded_by=request.user,
+        )
+        GoalActivity.objects.create(
+            goal=goal, user=request.user,
+            activity_type=GoalActivity.ActivityType.PROGRESS_UPDATE,
+            description=f'Progress updated: {old_pct}% → {goal.target_completion}%',
+            old_value=str(old_pct), new_value=str(goal.target_completion),
+        )
         return Response(GoalDetailSerializer(goal).data)
 
     @action(detail=True, methods=['post'])
@@ -291,9 +335,16 @@ class GoalViewSet(viewsets.ModelViewSet):
                 {'error': 'You do not have permission to complete this goal.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        old_status = goal.status
         goal.status = Goal.Status.COMPLETED
         goal.target_completion = 100
         goal.save(update_fields=['status', 'target_completion', 'updated_at'])
+        GoalActivity.objects.create(
+            goal=goal, user=request.user,
+            activity_type=GoalActivity.ActivityType.STATUS_CHANGE,
+            description='Goal marked as completed',
+            old_value=old_status, new_value=goal.status,
+        )
         return Response(GoalDetailSerializer(goal).data)
 
     # ── Comments ──────────────────────────────────────
@@ -401,6 +452,81 @@ class GoalViewSet(viewsets.ModelViewSet):
         goal.save(update_fields=['final_score', 'final_rating', 'status', 'is_finalized', 'updated_at'])
 
         return Response(GoalDetailSerializer(goal).data, status=status.HTTP_201_CREATED)
+
+    # ── Goal Journey endpoints ────────────────────────
+    @action(detail=True, methods=['get'])
+    def journey(self, request, pk=None):
+        """Get goal journey: milestones + progress + activities."""
+        goal = self.get_object()
+        milestones = goal.milestones.all()
+        snapshots = goal.progress_snapshots.all()
+        activities = goal.activities.select_related('user').all()[:50]
+        return Response({
+            'milestones': MilestoneSerializer(milestones, many=True).data,
+            'progress_history': ProgressSnapshotSerializer(snapshots, many=True).data,
+            'activities': GoalActivitySerializer(activities, many=True).data,
+        })
+
+    @action(detail=True, methods=['get'], url_path='progress-history')
+    def progress_history(self, request, pk=None):
+        """Get historical progress snapshots for charting."""
+        goal = self.get_object()
+        snapshots = goal.progress_snapshots.all()
+        return Response(ProgressSnapshotSerializer(snapshots, many=True).data)
+
+    @action(detail=True, methods=['get'])
+    def activities(self, request, pk=None):
+        """Get audit trail of goal activity."""
+        goal = self.get_object()
+        activities = goal.activities.select_related('user').all()
+        return Response(GoalActivitySerializer(activities, many=True).data)
+
+    @action(detail=True, methods=['get', 'post'])
+    def milestones(self, request, pk=None):
+        """List or create milestones for a goal."""
+        goal = self.get_object()
+        if request.method == 'GET':
+            milestones = goal.milestones.all()
+            return Response(MilestoneSerializer(milestones, many=True).data)
+        data = {**request.data, 'goal': goal.id}
+        serializer = MilestoneSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        milestone = serializer.save()
+        GoalActivity.objects.create(
+            goal=goal, user=request.user,
+            activity_type=GoalActivity.ActivityType.MILESTONE_UPDATE,
+            description=f'Milestone added: {milestone.title}',
+            new_value=milestone.title,
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+# ── Milestones ────────────────────────────────────────
+class MilestoneViewSet(viewsets.ModelViewSet):
+    """CRUD for milestones (also accessible nested under goals)."""
+    serializer_class = MilestoneSerializer
+    filterset_fields = ['goal', 'status']
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Milestone.objects.select_related('goal')
+        if user.user_type == 'admin':
+            return qs.all()
+        return qs.filter(
+            Q(goal__assigned_to=user) | Q(goal__created_by=user) | Q(goal__evaluator=user)
+        ).distinct()
+
+    def perform_update(self, serializer):
+        milestone = serializer.save()
+        if milestone.status == Milestone.Status.COMPLETED and not milestone.completed_at:
+            milestone.completed_at = timezone.now()
+            milestone.save(update_fields=['completed_at'])
+        GoalActivity.objects.create(
+            goal=milestone.goal, user=self.request.user,
+            activity_type=GoalActivity.ActivityType.MILESTONE_UPDATE,
+            description=f'Milestone updated: {milestone.title} → {milestone.get_status_display()}',
+            new_value=milestone.status,
+        )
 
 
 # ── Tasks (sub-items) ────────────────────────────────
@@ -626,3 +752,150 @@ class CompanyReportView(views.APIView):
             'score_distribution': score_dist,
             'team_summary': team_summary,
         })
+
+
+# ── Journal ───────────────────────────────────────────
+class JournalViewSet(viewsets.ModelViewSet):
+    """CRUD for daily journal entries."""
+    serializer_class = JournalEntrySerializer
+    filterset_fields = ['date', 'mood', 'is_private']
+    search_fields = ['accomplishments', 'challenges', 'learnings', 'free_notes']
+    ordering = ['-date']
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.user_type == 'admin':
+            return JournalEntry.objects.select_related('user').all()
+        if user.user_type == 'manager':
+            # Manager sees own + non-private entries from direct reports
+            return JournalEntry.objects.select_related('user').filter(
+                Q(user=user) |
+                (Q(user__evaluator=user) & Q(is_private=False))
+            ).distinct()
+        return JournalEntry.objects.filter(user=user)
+
+    def perform_create(self, serializer):
+        serializer.save(
+            user=self.request.user,
+            organization=getattr(self.request, 'organization', None),
+        )
+
+    @action(detail=False, methods=['get'], url_path='team')
+    def team_entries(self, request):
+        """Get today's entries from the manager's team."""
+        if request.user.user_type not in ('manager', 'admin'):
+            return Response(
+                {'error': 'Only managers and admins can view team entries.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        today = timezone.now().date()
+        date = request.query_params.get('date', str(today))
+        entries = JournalEntry.objects.filter(
+            user__evaluator=request.user,
+            date=date,
+            is_private=False,
+        ).select_related('user')
+        return Response(JournalEntrySerializer(entries, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='analytics')
+    def analytics(self, request):
+        """Mood trends and journal stats for the current user."""
+        user = request.user
+        entries = JournalEntry.objects.filter(user=user)
+        days = request.query_params.get('days', '30')
+        try:
+            days = int(days)
+        except ValueError:
+            days = 30
+        since = timezone.now().date() - timezone.timedelta(days=days)
+        recent = entries.filter(date__gte=since)
+
+        mood_counts = dict(recent.values_list('mood').annotate(c=Count('id')).values_list('mood', 'c'))
+        return Response({
+            'total_entries': entries.count(),
+            'period_entries': recent.count(),
+            'mood_distribution': mood_counts,
+            'streak': self._calculate_streak(entries),
+        })
+
+    def _calculate_streak(self, entries):
+        """Calculate consecutive days of journaling."""
+        dates = list(entries.order_by('-date').values_list('date', flat=True)[:60])
+        if not dates:
+            return 0
+        streak = 1
+        for i in range(1, len(dates)):
+            if (dates[i - 1] - dates[i]).days == 1:
+                streak += 1
+            else:
+                break
+        return streak
+
+
+# ── Organization ──────────────────────────────────────
+class OrganizationViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
+    serializer_class = OrganizationSerializer
+    search_fields = ['name', 'slug']
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.user_type == 'admin':
+            return Organization.objects.all()
+        if user.organization:
+            return Organization.objects.filter(id=user.organization_id)
+        return Organization.objects.none()
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsAdminUser()]
+        return [IsAuthenticated()]
+
+    @action(detail=True, methods=['get'])
+    def members(self, request, pk=None):
+        """List members of an organization."""
+        org = self.get_object()
+        users = org.users.select_related('team').all()
+        return Response(UserSerializer(users, many=True).data)
+
+
+# ── Calendar Integrations ─────────────────────────────
+class CalendarIntegrationViewSet(viewsets.ModelViewSet):
+    serializer_class = CalendarIntegrationSerializer
+
+    def get_queryset(self):
+        return CalendarIntegration.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class CalendarEventViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = CalendarEventSerializer
+    filterset_fields = ['goal', 'integration']
+
+    def get_queryset(self):
+        return CalendarEvent.objects.filter(
+            integration__user=self.request.user,
+        ).select_related('goal', 'milestone')
+
+
+# ── Teams Integration ─────────────────────────────────
+class TeamsIntegrationViewSet(viewsets.ModelViewSet):
+    serializer_class = TeamsIntegrationSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.user_type == 'admin':
+            return TeamsIntegration.objects.all()
+        return TeamsIntegration.objects.filter(
+            Q(organization=user.organization) |
+            Q(team__in=user.led_teams.all())
+        ).distinct()
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsEvaluatorOrAdmin()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)

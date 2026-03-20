@@ -8,6 +8,8 @@ from .models import (
     User, Team, Role, Entity, Permission, UserRole,
     Priority, GoalPeriod, Goal, GoalComment, GoalFeedback,
     Task, EvaluatorDimension, EvaluationRating, Evaluation,
+    Organization, Milestone, ProgressSnapshot, GoalActivity,
+    JournalEntry, CalendarIntegration, CalendarEvent, TeamsIntegration,
 )
 
 
@@ -279,3 +281,131 @@ class GoalCreateUpdateSerializer(serializers.ModelSerializer):
 
 class GoalProgressSerializer(serializers.Serializer):
     target_completion = serializers.IntegerField(min_value=0, max_value=100)
+
+
+# ── Organization ──────────────────────────────────────
+class OrganizationSerializer(serializers.ModelSerializer):
+    user_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Organization
+        fields = [
+            'id', 'name', 'slug', 'logo', 'domain', 'plan',
+            'max_users', 'is_active', 'user_count', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_user_count(self, obj):
+        return obj.users.count()
+
+
+# ── Goal Journey ──────────────────────────────────────
+class MilestoneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Milestone
+        fields = [
+            'id', 'goal', 'title', 'description', 'target_date',
+            'status', 'order', 'completed_at', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'completed_at', 'created_at', 'updated_at']
+
+
+class ProgressSnapshotSerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProgressSnapshot
+        fields = ['id', 'goal', 'completion_percentage', 'recorded_by', 'recorded_by_name', 'recorded_at']
+        read_only_fields = ['id', 'recorded_by', 'recorded_at']
+
+    def get_recorded_by_name(self, obj):
+        if obj.recorded_by:
+            return obj.recorded_by.get_full_name() or obj.recorded_by.username
+        return None
+
+
+class GoalActivitySerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GoalActivity
+        fields = [
+            'id', 'goal', 'user', 'user_name', 'activity_type',
+            'description', 'old_value', 'new_value', 'created_at',
+        ]
+        read_only_fields = ['id', 'user', 'created_at']
+
+    def get_user_name(self, obj):
+        if obj.user:
+            return obj.user.get_full_name() or obj.user.username
+        return None
+
+
+# ── Daily Journal ─────────────────────────────────────
+class JournalEntrySerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+    mood_display = serializers.CharField(source='get_mood_display', read_only=True)
+    linked_goal_names = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JournalEntry
+        fields = [
+            'id', 'user', 'user_name', 'organization', 'date',
+            'mood', 'mood_display',
+            'accomplishments', 'challenges', 'learnings',
+            'plan_tomorrow', 'free_notes',
+            'linked_goals', 'linked_goal_names',
+            'is_private', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'user', 'organization', 'created_at', 'updated_at']
+
+    def get_user_name(self, obj):
+        return obj.user.get_full_name() or obj.user.username
+
+    def get_linked_goal_names(self, obj):
+        return list(obj.linked_goals.values_list('name', flat=True))
+
+
+# ── Calendar & Teams ──────────────────────────────────
+class CalendarIntegrationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CalendarIntegration
+        fields = [
+            'id', 'user', 'provider', 'calendar_id',
+            'is_active', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+        # Exclude tokens from API responses
+        extra_kwargs = {
+            'access_token': {'write_only': True},
+            'refresh_token': {'write_only': True},
+        }
+
+
+class CalendarEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CalendarEvent
+        fields = [
+            'id', 'integration', 'goal', 'milestone',
+            'external_event_id', 'title',
+            'start_time', 'end_time', 'is_all_day', 'synced_at',
+        ]
+        read_only_fields = ['id', 'synced_at']
+
+
+class TeamsIntegrationSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamsIntegration
+        fields = [
+            'id', 'organization', 'team', 'channel_name',
+            'webhook_url', 'is_active', 'created_by',
+            'created_by_name', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return None
