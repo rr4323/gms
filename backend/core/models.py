@@ -7,6 +7,28 @@ from django.db import models
 from django.utils import timezone
 
 
+# ── Multi-Tenancy ─────────────────────────────────────
+
+class Organization(models.Model):
+    """Organization for multi-tenancy support."""
+    name = models.CharField(max_length=200, unique=True)
+    slug = models.SlugField(max_length=200, unique=True)
+    logo = models.ImageField(upload_to='org_logos/', blank=True, null=True)
+    domain = models.CharField(max_length=255, blank=True, help_text='SSO domain mapping')
+    plan = models.CharField(
+        max_length=20,
+        choices=[('free', 'Free'), ('pro', 'Pro'), ('enterprise', 'Enterprise')],
+        default='free',
+    )
+    max_users = models.IntegerField(default=10)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
 class User(AbstractUser):
     """Extended user model with user type."""
 
@@ -29,6 +51,11 @@ class User(AbstractUser):
         'self', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='direct_reports',
     )
+    organization = models.ForeignKey(
+        Organization, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='users',
+    )
+    is_org_admin = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.get_full_name() or self.username} ({self.get_user_type_display()})"
@@ -53,6 +80,10 @@ class Team(models.Model):
     lead = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='led_teams',
+    )
+    organization = models.ForeignKey(
+        Organization, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='teams',
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -225,6 +256,10 @@ class Goal(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='evaluated_goals',
     )
+    organization = models.ForeignKey(
+        Organization, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='goals',
+    )
 
     # Dates
     due_date = models.DateField()
@@ -350,3 +385,193 @@ class Evaluation(models.Model):
 
     def __str__(self):
         return f"{self.dimension}: {self.rating} for {self.goal}"
+
+
+# ── Goal Journey ──────────────────────────────────────
+
+class Milestone(models.Model):
+    """Key checkpoint within a goal."""
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        IN_PROGRESS = 'in_progress', 'In Progress'
+        COMPLETED = 'completed', 'Completed'
+        SKIPPED = 'skipped', 'Skipped'
+
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name='milestones')
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    target_date = models.DateField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING,
+    )
+    order = models.PositiveIntegerField(default=0)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', 'created_at']
+
+    def __str__(self):
+        return f"{self.title} ({self.get_status_display()})"
+
+
+class ProgressSnapshot(models.Model):
+    """Point-in-time completion % for historical charting."""
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name='progress_snapshots')
+    completion_percentage = models.IntegerField()
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+    )
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['recorded_at']
+
+    def __str__(self):
+        return f"{self.goal} — {self.completion_percentage}% at {self.recorded_at}"
+
+
+class GoalActivity(models.Model):
+    """Audit trail: every status change, progress update, comment, feedback."""
+
+    class ActivityType(models.TextChoices):
+        STATUS_CHANGE = 'status_change', 'Status Change'
+        PROGRESS_UPDATE = 'progress_update', 'Progress Update'
+        COMMENT_ADDED = 'comment_added', 'Comment Added'
+        FEEDBACK_ADDED = 'feedback_added', 'Feedback Added'
+        EVALUATION_DONE = 'evaluation_done', 'Evaluation Done'
+        MILESTONE_UPDATE = 'milestone_update', 'Milestone Update'
+        CREATED = 'created', 'Goal Created'
+
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name='activities')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+    )
+    activity_type = models.CharField(max_length=30, choices=ActivityType.choices)
+    description = models.TextField(blank=True)
+    old_value = models.CharField(max_length=200, blank=True)
+    new_value = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = 'goal activities'
+
+    def __str__(self):
+        return f"{self.get_activity_type_display()} on {self.goal}"
+
+
+# ── Daily Journal ─────────────────────────────────────
+
+class JournalEntry(models.Model):
+    """Daily journal entry for reflection and tracking."""
+
+    class Mood(models.TextChoices):
+        GREAT = 'great', '😊 Great'
+        GOOD = 'good', '🙂 Good'
+        NEUTRAL = 'neutral', '😐 Neutral'
+        STRUGGLING = 'struggling', '😟 Struggling'
+        TOUGH = 'tough', '😣 Tough'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='journal_entries',
+    )
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='journal_entries',
+    )
+    date = models.DateField()
+    mood = models.CharField(max_length=20, choices=Mood.choices, blank=True)
+    accomplishments = models.TextField(blank=True)
+    challenges = models.TextField(blank=True)
+    learnings = models.TextField(blank=True)
+    plan_tomorrow = models.TextField(blank=True)
+    free_notes = models.TextField(blank=True)
+    linked_goals = models.ManyToManyField(Goal, blank=True, related_name='journal_entries')
+    is_private = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'date')
+        ordering = ['-date']
+        verbose_name_plural = 'journal entries'
+
+    def __str__(self):
+        return f"Journal: {self.user} — {self.date}"
+
+
+# ── Calendar & Teams Integration ──────────────────────
+
+class CalendarIntegration(models.Model):
+    """OAuth connection between a user and a calendar provider."""
+
+    class Provider(models.TextChoices):
+        GOOGLE = 'google', 'Google Calendar'
+        OUTLOOK = 'outlook', 'Outlook Calendar'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='calendar_integrations',
+    )
+    provider = models.CharField(max_length=20, choices=Provider.choices)
+    access_token = models.TextField(blank=True)
+    refresh_token = models.TextField(blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    calendar_id = models.CharField(max_length=255, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'provider')
+
+    def __str__(self):
+        return f"{self.user} — {self.get_provider_display()}"
+
+
+class CalendarEvent(models.Model):
+    """Synced calendar event linked to a goal or milestone."""
+    integration = models.ForeignKey(
+        CalendarIntegration, on_delete=models.CASCADE, related_name='events',
+    )
+    goal = models.ForeignKey(
+        Goal, on_delete=models.CASCADE, null=True, blank=True, related_name='calendar_events',
+    )
+    milestone = models.ForeignKey(
+        Milestone, on_delete=models.CASCADE, null=True, blank=True, related_name='calendar_events',
+    )
+    external_event_id = models.CharField(max_length=255)
+    title = models.CharField(max_length=300)
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField(null=True, blank=True)
+    is_all_day = models.BooleanField(default=False)
+    synced_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.title} ({self.start_time})"
+
+
+class TeamsIntegration(models.Model):
+    """Teams channel webhook for org/team notifications."""
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='teams_integrations',
+    )
+    team = models.ForeignKey(
+        Team, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='teams_integrations',
+    )
+    channel_name = models.CharField(max_length=200)
+    webhook_url = models.URLField()
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Teams: {self.channel_name}"
